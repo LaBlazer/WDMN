@@ -7,6 +7,9 @@ from typing import List, Sized, Union, Optional, Tuple
 import numpy as np
 import torch
 from torchtext import vocab
+from torchtext.data import get_tokenizer
+
+tokenizer = get_tokenizer("basic_english")
 
 
 def _check_truncate(vec, truncate, truncate_left=False):
@@ -120,7 +123,7 @@ def build_vocab(lst_of_utterances, min_freq=3, unk_token='<UNK>', pad_token='<PA
     tok2freq = dict()
 
     for u in lst_of_utterances:
-        toks = u2toks(u)
+        toks = tokenizer(u)
         for tok in toks:
             if tok not in tok2freq:
                 tok2freq[tok] = 1
@@ -137,45 +140,44 @@ def build_vocab(lst_of_utterances, min_freq=3, unk_token='<UNK>', pad_token='<PA
 
 
 def build_embed(built_vocab):
-    embs = vocab.FastText()
+    embs = vocab.GloVe('twitter.27B', dim=200)
     ret_embs = torch.zeros((len(built_vocab), embs.dim))
     for tok, idx in built_vocab.items():
         ret_embs[idx] = embs.get_vecs_by_tokens(tok, lower_case_backup=True)
     return [np.asarray(vec) for vec in ret_embs]
 
 
-def read_fb_dialogues(f_path):
+def read_support_dialogues(f_path):
     dialogues = []
     with open(f_path, encoding='utf-8') as f:
         for line in f.readlines():
+            
+            
             # if not line.islower():
             #     raise RuntimeError('The corpus is not lower-cased!')
             item_arr = line.strip().split('\t')
+            
             if len(item_arr) < 2:
                 pass
-            context = [u.strip() for u in ' '.join(item_arr[0].split()[1:]).split('__EOT__')]
-            response = item_arr[1].strip()
-            dialogues.append((context, response))
+            
+            context = [u.strip() for u in item_arr[1:-1]]
+            response = item_arr[-1].strip()
+            label = int(item_arr[0].strip())
+            
+            dialogues.append((context, response, label))
+
     return dialogues
 
 
-def u2toks(u: str):
-    return [tok.strip() for tok in u.split()]
-
-
-def neg_sampling(dialogues, sample_from, built_dict, num_neg=1):
+def vectorize_dialogue(dialogues, built_dict):
     utterances = []
     responses = []
     labels = []
-    for context, response in dialogues:
-        utterances.append([_check_truncate(vectorized(u2toks(u), built_dict), 50, True) for u in context])
-        responses.append(_check_truncate(vectorized(u2toks(response), built_dict), 50))
-        labels.append(1)
+    for context, response, label in dialogues:
+        utterances.append([_check_truncate(vectorized(tokenizer(u), built_dict), 50, True) for u in context])
+        responses.append(_check_truncate(vectorized(tokenizer(response), built_dict), 50))
+        labels.append(label)
 
-        for _ in range(num_neg):
-            utterances.append([_check_truncate(vectorized(u2toks(u), built_dict), 50, True) for u in context])
-            responses.append(_check_truncate(vectorized(u2toks(random.choice(sample_from)[1]), built_dict), 50))
-            labels.append(0)
     return utterances, responses, labels
 
 
@@ -192,56 +194,49 @@ def dump_data(X_train_utterances, X_train_responses, y_train, f_name):
     X_train_responses = padded_tensor(X_train_responses, max_len=50, left_padded=True)[0].tolist()
 
     pickle.dump((X_train_utterances, X_train_responses, y_train),
-                open(os.path.join(args.out_dir, f_name), 'wb'))
+                open(os.path.join(args['out_dir'], f_name), 'wb'))
 
 
 def main(args):
-    train_dialogues = read_fb_dialogues(os.path.join(args.data_dir, "train.txt"))
-    dev_dialogues = read_fb_dialogues(os.path.join(args.data_dir, "valid.txt"))
-    test_dialogues = read_fb_dialogues(os.path.join(args.data_dir, "test.txt"))
-    all_utterances = [' '.join(c) + ' ' + r for c, r in train_dialogues + dev_dialogues + test_dialogues]
+    train_dialogues = read_support_dialogues(os.path.join(args['data_dir'], "train.txt"))
+    print("train")
+    print(train_dialogues[:10])
+    dev_dialogues = read_support_dialogues(os.path.join(args['data_dir'], "valid.txt"))
+    print("valid")
+    print(dev_dialogues[:10])
+    test_dialogues = read_support_dialogues(os.path.join(args['data_dir'], "test.txt"))
+    print("test")
+    print(test_dialogues[:10])
+    all_utterances = [' '.join(c) + ' ' + r for c, r, _ in train_dialogues + dev_dialogues + test_dialogues]
     built_dict = build_vocab(all_utterances)
-
-    X_train_utterances, X_train_responses, y_train = neg_sampling(
-        train_dialogues, train_dialogues, built_dict
-    )
-    X_dev_utterances, X_dev_responses, y_dev = neg_sampling(
-        dev_dialogues, train_dialogues, built_dict, num_neg=9
-    )
-    X_test_utterances, X_test_responses, y_test = neg_sampling(
-        test_dialogues, train_dialogues, built_dict, num_neg=9
-    )
+    
+    print(len(built_dict))
+    
+    X_train_utterances, X_train_responses, y_train = vectorize_dialogue(train_dialogues, built_dict)
+    X_dev_utterances, X_dev_responses, y_dev = vectorize_dialogue(dev_dialogues, built_dict)
+    X_test_utterances, X_test_responses, y_test = vectorize_dialogue(test_dialogues, built_dict)
+    
+    print(X_train_utterances[:10])
+    
     dump_data(X_train_utterances, X_train_responses, y_train, 'train.pkl')
     dump_data(X_dev_utterances, X_dev_responses, y_dev, 'dev.pkl')
     dump_data(X_test_utterances, X_test_responses, y_test, 'test.pkl')
 
     embed = build_embed(built_dict)
-    pickle.dump((built_dict, embed), open(os.path.join(args.out_dir, 'vocab_and_embeddings.pkl'), 'wb'))
+    pickle.dump((built_dict, embed), open(os.path.join(args['out_dir'], 'vocab_and_embeddings.pkl'), 'wb'))
 
 
 def check_args(args):
     if not os.path.exists(args.data_dir):
         raise ValueError("data_dir: {} does not exist!".format(args.data_dir))
-    #if not os.path.isfile(args.embed_file):
-    #    raise ValueError("embed_file: {} does not exist!".format(args.embed_file))
+    if not os.path.isfile(args.embed_file):
+        raise ValueError("embed_file: {} does not exist!".format(args.embed_file))
     if not os.path.exists(args.out_dir):
         os.mkdir(args.out_dir)
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--data_dir',
-        required=True,
-    )
-    #parser.add_argument(
-    #    '--embed_file',
-    #    required=True,
-    #)
-    parser.add_argument(
-        '--out_dir',
-        required=True,
-    )
-    args = parser.parse_args()
-    check_args(args)
-    main(args)
+args = {}
+args['data_dir'] = 'WDMN/support_data'
+args['out_dir'] = 'WDMN/support_data'
+#check_args(args)
+main(args)
