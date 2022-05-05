@@ -136,8 +136,8 @@ def build_vocab(lst_of_utterances, min_freq=3, unk_token='<UNK>', pad_token='<PA
     return tok2idx
 
 
-def build_embed(pretrained_embed_f, built_vocab):
-    embs = vocab.Vectors(pretrained_embed_f)
+def build_embed(built_vocab):
+    embs = vocab.FastText()
     ret_embs = torch.zeros((len(built_vocab), embs.dim))
     for tok, idx in built_vocab.items():
         ret_embs[idx] = embs.get_vecs_by_tokens(tok, lower_case_backup=True)
@@ -215,15 +215,15 @@ def main(args):
     dump_data(X_dev_utterances, X_dev_responses, y_dev, 'dev.pkl')
     dump_data(X_test_utterances, X_test_responses, y_test, 'test.pkl')
 
-    embed = build_embed(args.embed_file, built_dict)
+    embed = build_embed(built_dict)
     pickle.dump((built_dict, embed), open(os.path.join(args.out_dir, 'vocab_and_embeddings.pkl'), 'wb'))
 
 
 def check_args(args):
     if not os.path.exists(args.data_dir):
         raise ValueError("data_dir: {} does not exist!".format(args.data_dir))
-    if not os.path.isfile(args.embed_file):
-        raise ValueError("embed_file: {} does not exist!".format(args.embed_file))
+    #if not os.path.isfile(args.embed_file):
+    #    raise ValueError("embed_file: {} does not exist!".format(args.embed_file))
     if not os.path.exists(args.out_dir):
         os.mkdir(args.out_dir)
 
@@ -234,10 +234,10 @@ if __name__ == '__main__':
         '--data_dir',
         required=True,
     )
-    parser.add_argument(
-        '--embed_file',
-        required=True,
-    )
+    #parser.add_argument(
+    #    '--embed_file',
+    #    required=True,
+    #)
     parser.add_argument(
         '--out_dir',
         required=True,
