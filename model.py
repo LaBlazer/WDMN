@@ -17,7 +17,7 @@ class WDMN(object):
         max_word_len = FLAGS.max_utterance_len
 
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
-        self.context = tf.placeholder(tf.int32, [None, 10, 50], name='context')
+        self.context = tf.placeholder(tf.int32, [None, 15, 50], name='context')
         self.response = tf.placeholder(tf.int32, [None, 50], name='response')
         self.target = tf.placeholder(tf.int32, [None, ], name='target')
 
