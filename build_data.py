@@ -236,7 +236,7 @@ def check_args(args):
 
 
 args = {}
-args['data_dir'] = 'WDMN/support_data'
-args['out_dir'] = 'WDMN/support_data'
+args['data_dir'] = 'support_data'
+args['out_dir'] = 'support_data'
 #check_args(args)
 main(args)
