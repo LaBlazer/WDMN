@@ -7,6 +7,7 @@ from datetime import datetime
 
 import numpy as np
 import tensorflow as tf
+from tqdm import tqdm
 
 from config import get_args
 from data_utils import CRMatchingDataset
@@ -155,7 +156,7 @@ if __name__ == "__main__":
             count = 0
             
             ''' Inferencing '''
-            for _ in range(dataset.batches()):
+            for _ in tqdm(range(dataset.batches())):
                 contexts, responses, labels = dataset.next()
                 feed_dict = {
                     model.context: contexts,
